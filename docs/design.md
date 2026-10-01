@@ -10,7 +10,7 @@ due, publishes complete products, and exits.
 | Product family | Source and current scope |
 | --- | --- |
 | Synoptic grid | ECMWF Open Data IFS GRIB, cropped to 95°E–170°E and 0°–50°S, 0.25° grid, 00Z and 12Z runs, 0–96 hours at the model's three-hour steps. |
-| Point forecasts | Open-Meteo ECMWF 9 km surface, upper-air, marine, and two-point ensemble requests. Configured points are in `config/isobar.toml`. |
+| Point forecasts | Open-Meteo ECMWF 9 km surface for 168 hours and seven local days, plus upper-air, marine, and two-point ensemble requests. Configured points are in `config/isobar.toml`. Hourly surface times stay GMT; daily dates follow each place's timezone. |
 | Observations | Bureau anonymous FTP observation bundles, normalised into the local observation store. |
 | Charts and warnings | Bureau anonymous FTP prognosis charts and warning XML. |
 | Aviation | aviationweather.gov METAR, TAF, Australian FIR SIGMET and PIREP endpoints, plus filtered OurAirports runway data. |

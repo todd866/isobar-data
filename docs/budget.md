@@ -6,8 +6,14 @@ Upper-air point requests now contain 91 hourly variables (13 pressure levels,
 including relative humidity, cloud fraction, wind and vertical velocity), weight
 9.1 per location/run.
 At the eight-airport cap and four runs this is 291.2 weighted calls/day; the
-configured two airports use 72.8. Surface points add mid/high cloud: 14 hourly
-plus two daily variables, weight 1.6, or 51.2/day at the eight-point cap.
+configured two airports use 72.8. Surface points request 168 hourly hours,
+seven local calendar days, and ten daily fields (14 hourly + 10 daily = 24
+names). Seven days stays inside the 14-day weight plateau, so the weight is
+2.4 per location. At the eight-point cap and four runs that is 76.8/day; the
+configured six points are 57.6/day. Upper air, marine, ensemble, those surface
+runs, and the 15-minute meta checks stay under the token-bucket day and month
+windows. The 72-hour surface horizon in the historical arithmetic below is not
+the current request.
 The collector calculates request weight from the actual variable count.
 Changing the requested variable set permits one refresh of the current run;
 subsequent calls reuse that run until the publisher advances it.

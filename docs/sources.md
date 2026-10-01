@@ -337,7 +337,7 @@ These are the phase 1b feeds. Call weight is the Open-Meteo formula already quot
 
 One hour at −32.00, 115.75, `models=ecmwf_ifs`, `cell_selection=nearest`, `elevation=nan`, `wind_speed_unit=kn`, snapped to −32.02109, 115.72979, elevation 0. HTTP 200, about 1.2 s. Filled: temperature 17.5 °C, dew point 8.9 °C, MSLP 1023.1 hPa, wind 15.6 kn from 119°, gust 21.2 kn, precipitation 0.00 mm, CAPE 10 J/kg, visibility 52,320 m, cloud cover 77%, low cloud 74%, weather code 2. `daily=sunrise,sunset` for that cell on 26 Sep was 2026-09-25T22:01Z and 2026-09-26T10:15Z (06:01 and 18:15 AWST).
 
-The same model, 72 hours of wind speed, direction, and gust at the Cottesloe coordinate below, was hourly and non-null from 2026-09-26T05:00Z through 2026-09-29T04:00Z. Pressure-level names on this model, including `freezing_level_height` and `temperature_850hPa`, came back null with unit `undefined`. Upper air does not use `ecmwf_ifs`.
+The same model, 72 hours of wind speed, direction, and gust at the Cottesloe coordinate below, was hourly and non-null from 2026-09-26T05:00Z through 2026-09-29T04:00Z. That sample is the 26 Sep check, not the current horizon. The collector now requests 168 hourly hours with `timezone=auto`, so the daily aggregates are local calendar days. Published hourly timestamps stay GMT. Pressure-level names on this model, including `freezing_level_height` and `temperature_850hPa`, came back null with unit `undefined`. Upper air does not use `ecmwf_ifs`.
 
 Five coordinates in one URL, `elevation=nan` repeated once each, `forecast_hours=1`, each snapped to a different 9 km cell:
 

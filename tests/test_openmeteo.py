@@ -5,8 +5,11 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from isobar_data.http import Http, Stats
+from isobar_data.kite_job import daylight_from_point
 from isobar_data.openmeteo import (
+    SURFACE_DAILY,
     SURFACE_HOURLY,
+    SURFACE_HOURS,
     UPPER_LEVELS_HPA,
     _hourly_profile,
     _upper_levels,
@@ -14,6 +17,9 @@ from isobar_data.openmeteo import (
     normalise_point,
     upper_hourly,
 )
+from isobar_data.policy import assert_http_allowed
+from isobar_data.publish import read_published
+from isobar_data.scheduler import _surface
 from isobar_data.tokens import standard_buckets
 
 UTC = timezone.utc
@@ -187,3 +193,172 @@ def test_fetch_job_refetches_when_hourly_profile_expands(tmp_path):
     assert calls["forecast"] == 1
     assert state["sources"]["open-meteo-upper"]["variables"] == _hourly_profile(expanded, ())
     http.close()
+
+
+def test_gmt_hourly_times_stay_as_the_api_sent_them():
+    body = {
+        "latitude": -31.9,
+        "longitude": 115.9,
+        "timezone": "GMT",
+        "hourly": {
+            "time": ["2026-09-26T00:00", "2026-09-26T03:00"],
+            "temperature_850hPa": [1.0, 2.0],
+        },
+    }
+    product = normalise_point(
+        body,
+        kind="upper",
+        point_id="YPPH",
+        run="2026-09-26T00:00:00Z",
+        native_step=3,
+        model="ecmwf_ifs025",
+    )
+    assert product["time"] == ["2026-09-26T00:00", "2026-09-26T03:00"]
+    assert "timezone" not in product
+
+
+def test_surface_request_is_seven_local_days_and_hourly_stays_gmt(tmp_path):
+    from urllib.parse import parse_qs, urlparse
+
+    from isobar_data.config import load_config
+    from isobar_data.http import Http, Stats
+
+    assert SURFACE_HOURS == 168
+    init = datetime(2026, 10, 1, 0, tzinfo=UTC)
+    available = datetime(2026, 10, 1, 7, 22, tzinfo=UTC)
+    meta = {
+        "last_run_initialisation_time": init.timestamp(),
+        "last_run_availability_time": available.timestamp(),
+    }
+    perth_daily = {
+        "time": ["2026-10-02"],
+        "sunrise": ["2026-10-02T05:47"],
+        "sunset": ["2026-10-02T18:19"],
+        "temperature_2m_max": [24.2],
+        "temperature_2m_min": [13.4],
+        "precipitation_sum": [1.2],
+        "precipitation_hours": [2.0],
+        "weather_code": [3],
+        "wind_speed_10m_max": [18.0],
+        "wind_gusts_10m_max": [28.0],
+        "wind_direction_10m_dominant": [210],
+    }
+    sydney_daily = {
+        "time": ["2026-10-04"],
+        "sunrise": ["2026-10-04T05:28"],
+        "sunset": ["2026-10-04T18:00"],
+        "temperature_2m_max": [22.0],
+        "temperature_2m_min": [15.0],
+        "precipitation_sum": [0.0],
+        "precipitation_hours": [0.0],
+        "weather_code": [1],
+        "wind_speed_10m_max": [12.0],
+        "wind_gusts_10m_max": [16.0],
+        "wind_direction_10m_dominant": [40],
+    }
+
+    def location(zone, times, daily):
+        # Open-Meteo writes every local time at one fixed offset (the offset at
+        # request time), even across a daylight-saving change.
+        return {
+            "latitude": -32.0,
+            "longitude": 115.7,
+            "elevation": 0,
+            "timezone": zone,
+            "utc_offset_seconds": 36000 if zone == "Australia/Sydney" else 28800,
+            "hourly": {
+                "time": times,
+                "temperature_2m": [20.0] * len(times),
+            },
+            "hourly_units": {"temperature_2m": "°C"},
+            "daily": daily,
+            "daily_units": {
+                "temperature_2m_max": "°C",
+                "precipitation_sum": "mm",
+                "wind_speed_10m_max": "kn",
+            },
+        }
+
+    config = load_config()
+    bodies = []
+    for point in config.surface:
+        if point.id == "yssy":
+            bodies.append(location(
+                "Australia/Sydney",
+                ["2026-10-04T01:00", "2026-10-04T02:00", "2026-10-04T03:00"],
+                sydney_daily,
+            ))
+        elif point.id == "cottesloe":
+            bodies.append(location(
+                "Australia/Perth",
+                ["2026-10-02T00:00", "2026-10-02T01:00"],
+                perth_daily,
+            ))
+        else:
+            bodies.append(location(
+                "Australia/Perth",
+                ["2026-10-02T00:00"],
+                perth_daily,
+            ))
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if str(request.url).endswith("meta.json"):
+            return httpx.Response(200, json=meta)
+        seen.append(str(request.url))
+        return httpx.Response(200, json=bodies)
+
+    now = available + timedelta(minutes=11)
+    http = Http(
+        standard_buckets(),
+        Stats(),
+        transport=httpx.MockTransport(handler),
+        sleep=lambda _seconds: None,
+        uniform=lambda _a, _b: 0,
+        now=lambda: now,
+    )
+    result = _surface({
+        "http": http,
+        "root": tmp_path,
+        "state": {},
+        "now": now,
+        "config": config,
+    })
+    http.close()
+    assert result["ok"] is True
+    assert len(seen) == 1
+    assert_http_allowed(seen[0])
+    query = parse_qs(urlparse(seen[0]).query)
+    assert query["forecast_hours"] == [str(SURFACE_HOURS)]
+    assert query["timezone"] == ["auto"]
+    assert query["models"] == ["ecmwf_ifs"]
+    assert query["daily"] == [",".join(SURFACE_DAILY)]
+    assert query["hourly"] == [",".join(SURFACE_HOURLY)]
+
+    perth = read_published(tmp_path, "points/ecmwf_ifs", "cottesloe.json")
+    sydney = read_published(tmp_path, "points/ecmwf_ifs", "yssy.json")
+    assert perth["schema_version"] == 1
+    assert perth["time"] == ["2026-10-01T16:00", "2026-10-01T17:00"]
+    assert perth["timezone"] == "Australia/Perth"
+    assert perth["daily"]["time"] == ["2026-10-02"]
+    assert perth["daily"]["sunrise"] == ["2026-10-02T05:47+08:00"]
+    assert perth["daily"]["sunset"] == ["2026-10-02T18:19+08:00"]
+    assert perth["daily"]["temperature_2m_max"] == [24.2]
+    assert perth["daily"]["temperature_2m_min"] == [13.4]
+    assert perth["daily"]["precipitation_sum"] == [1.2]
+    assert perth["daily"]["precipitation_hours"] == [2.0]
+    assert perth["daily"]["weather_code"] == [3]
+    assert perth["daily"]["wind_speed_10m_max"] == [18.0]
+    assert perth["daily"]["wind_gusts_10m_max"] == [28.0]
+    assert perth["daily"]["wind_direction_10m_dominant"] == [210]
+    rise, settle = daylight_from_point(perth)[0]
+    assert rise == datetime(2026, 10, 1, 21, 47, tzinfo=UTC)
+    assert settle == datetime(2026, 10, 2, 10, 19, tzinfo=UTC)
+
+    assert sydney["time"] == ["2026-10-03T15:00", "2026-10-03T16:00", "2026-10-03T17:00"]
+    assert sydney["timezone"] == "Australia/Sydney"
+    assert sydney["daily"]["time"] == ["2026-10-04"]
+    # 05:28 at the fixed +10:00 offset is 06:28 daylight time; no hour repeats.
+    assert sydney["daily"]["sunrise"] == ["2026-10-04T05:28+10:00"]
+    assert sydney["daily"]["temperature_2m_max"] == [22.0]
+    assert sydney["daily"]["wind_gusts_10m_max"] == [16.0]

@@ -51,7 +51,21 @@ SURFACE_HOURLY = (
 # stratosphere. Open-Meteo exposes these IFS 0.25° pressure-level variables
 # directly, including the derived geometric vertical velocity.
 UPPER_LEVELS_HPA = (1000, 925, 850, 700, 600, 500, 400, 300, 250, 200, 150, 100, 50)
-SURFACE_DAILY = ("sunrise", "sunset")
+# Daily names the ecmwf_ifs forecast aggregates in the location's timezone.
+# All of these are valid on that model.
+SURFACE_DAILY = (
+    "sunrise",
+    "sunset",
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "precipitation_sum",
+    "precipitation_hours",
+    "weather_code",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "wind_direction_10m_dominant",
+)
+SURFACE_HOURS = 168
 
 
 def upper_hourly() -> tuple[str, ...]:
@@ -142,13 +156,14 @@ def forecast_params(
     cell: str,
     wind_kn: bool,
     elevation_nan: bool,
+    tz: str = "GMT",
 ) -> str:
     pairs: list[tuple[str, str]] = [
         ("latitude", ",".join(str(lat) for _ident, lat, _lon in points)),
         ("longitude", ",".join(str(lon) for _ident, _lat, lon in points)),
         ("hourly", ",".join(hourly)),
         ("cell_selection", cell),
-        ("timezone", "GMT"),
+        ("timezone", tz),
     ]
     if daily:
         pairs.append(("daily", ",".join(daily)))
@@ -194,18 +209,59 @@ def _slice(values, indexes: list[int]):
     return [values[index] for index in indexes if index < len(values)]
 
 
+def _local_zone(body: dict):
+    """Clock offset of a non-GMT Open-Meteo body. GMT responses stay untouched.
+
+    Open-Meteo writes every local time in the series at one fixed
+    ``utc_offset_seconds`` (the offset at request time), even across a
+    daylight-saving change, so the IANA zone must not be used to read them.
+    """
+    name = body.get("timezone")
+    if not name or str(name) in {"GMT", "UTC", "Etc/UTC", "Etc/GMT"}:
+        return None
+    offset = body.get("utc_offset_seconds")
+    if not isinstance(offset, (int, float)) or isinstance(offset, bool):
+        raise ValueError(f"Open-Meteo body for {name} has no utc_offset_seconds")
+    return timezone(timedelta(seconds=int(offset)))
+
+
+def _gmt_hour(text: str, zone) -> str:
+    moment = datetime.fromisoformat(str(text))
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=zone)
+    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+
+
+def _local_clock(text, zone):
+    if not text:
+        return text
+    moment = datetime.fromisoformat(str(text))
+    if moment.tzinfo is not None:
+        return str(text)
+    return moment.replace(tzinfo=zone).isoformat(timespec="minutes")
+
+
 def normalise_point(body: dict, *, kind: str, point_id: str, run: str, native_step: int, model: str) -> dict:
     hourly = body.get("hourly") or {}
     times = list(hourly.get("time") or [])
     indexes = subsample_hours(times, native_step)
-    kept_times = [times[index] for index in indexes]
+    zone = _local_zone(body)
+    kept_times = [
+        _gmt_hour(times[index], zone) if zone is not None else times[index]
+        for index in indexes
+    ]
     kept_hourly = {}
     units = body.get("hourly_units") or {}
     for key, values in hourly.items():
         if key == "time":
             continue
         kept_hourly[key] = _slice(values, indexes)
-    daily = body.get("daily") or {}
+    daily = dict(body.get("daily") or {})
+    if zone is not None:
+        for key in ("sunrise", "sunset"):
+            values = daily.get(key)
+            if isinstance(values, list):
+                daily[key] = [_local_clock(value, zone) for value in values]
     product = {
         **marker(family={
             "surface": "points/ecmwf_ifs",
@@ -226,6 +282,9 @@ def normalise_point(body: dict, *, kind: str, point_id: str, run: str, native_st
         "daily": daily,
         "valid_time": kept_times[-1] if kept_times else None,
     }
+    if zone is not None:
+        # Daily dates and sunrise/sunset are local. Hourly `time` stays GMT.
+        product["timezone"] = str(body["timezone"])
     if kind == "marine":
         from isobar_data.derive import MARINE_CAUTION
 
@@ -290,6 +349,7 @@ def fetch_job(
     native_step: int,
     kind: str,
     product_dir: Path,
+    tz: str = "GMT",
 ) -> dict:
     if not points:
         return {"ok": True, "complete": True, "detail": "no points configured", "run": None, "calls": 0}
@@ -347,6 +407,7 @@ def fetch_job(
         cell=cell,
         wind_kn=wind_kn,
         elevation_nan=elevation_nan,
+        tz=tz,
     )
     response = http.get(f"{endpoint}?{query}", bucket="open-meteo", weight=weight, timeout=120, accept="application/json")
     if response.status_code != 200:
