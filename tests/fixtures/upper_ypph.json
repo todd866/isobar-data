@@ -1,0 +1,11 @@
+{
+  "time": ["2026-09-26T05:00:00Z"],
+  "levels": {
+    "1000": {"temperature_c": [15.0], "height_m": [192]},
+    "925": {"temperature_c": [8.3], "height_m": [844]},
+    "850": {"temperature_c": [4.5], "wind_speed_kt": [19.4], "wind_direction_deg": [91], "height_m": [1537]},
+    "700": {"temperature_c": [-4.0], "wind_speed_kt": [4.0], "wind_direction_deg": [95], "height_m": [3096]},
+    "500": {"temperature_c": [-22.4], "height_m": [5670]},
+    "300": {"temperature_c": [-42.5], "height_m": [9248]}
+  }
+}

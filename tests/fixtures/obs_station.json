@@ -1,0 +1,30 @@
+{
+  "observations": {
+    "notice": [{"copyright": "Copyright Commonwealth of Australia 2026, Bureau of Meteorology"}],
+    "header": [{
+      "ID": "IDW60910",
+      "name": "Swanbourne",
+      "wmo_id": "94614"
+    }],
+    "data": [{
+      "wmo": 94614,
+      "name": "Swanbourne",
+      "aifstime_utc": "20260926050000",
+      "lat": -31.956,
+      "lon": 115.7619,
+      "air_temp": 16.3,
+      "wind_dir": "ESE",
+      "wind_dir_deg": 112,
+      "wind_spd_kmh": 22,
+      "gust_kmh": 41,
+      "wind_spd_kt": 12,
+      "gust_kt": 22,
+      "press_msl": null,
+      "press_tend": "-",
+      "rain_trace": "0.0",
+      "cloud_base_m": null,
+      "vis_km": "-",
+      "history_product": "IDW60910"
+    }]
+  }
+}

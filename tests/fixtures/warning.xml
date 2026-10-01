@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<product version="1.7">
+  <amoc>
+    <identifier>IDW20100</identifier>
+    <product-type>W</product-type>
+  </amoc>
+  <text type="warning_title">Marine Wind Warning Summary for Western Australia</text>
+</product>

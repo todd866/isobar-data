@@ -1,0 +1,27 @@
+[
+  {
+    "firId": "YMMM",
+    "firName": "YMMM MELBOURNE",
+    "hazard": "TURB",
+    "qualifier": "SEV",
+    "base": 26000,
+    "top": 34000,
+    "rawSigmet": "WSAU21 YMMC 260405\nYMMM SIGMET W01 VALID 260405/260805 YMMC-",
+    "validTimeFrom": 1,
+    "validTimeTo": 2
+  },
+  {
+    "firId": "YBBB",
+    "firName": "YBBB BRISBANE",
+    "hazard": "TURB",
+    "qualifier": "SEV",
+    "rawSigmet": "YBBB SIGMET C02",
+    "validTimeFrom": 1,
+    "validTimeTo": 2
+  },
+  {
+    "firId": "KZAK",
+    "hazard": "CONVECTIVE",
+    "rawSigmet": "CONVECTIVE SIGMET"
+  }
+]

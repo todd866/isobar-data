@@ -1,0 +1,12 @@
+{
+  "icaoId": "YSSY",
+  "rawOb": "METAR YSSY 260530Z 03015KT CAVOK 28/13 Q1019",
+  "reportTime": "2026-09-26T05:30:00.000Z",
+  "wdir": 30,
+  "wspd": 15,
+  "wgst": null,
+  "visib": "6+",
+  "cover": "CAVOK",
+  "fltCat": "VFR",
+  "clouds": []
+}

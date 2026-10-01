@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "isobar-data"
+version = "0.1.0"
+description = "Personal weather archive for Isobar: ECMWF open-data grids and budgeted point feeds."
+requires-python = ">=3.12"
+dependencies = [
+    "eccodes>=2.43",
+    "httpx>=0.27",
+    "numpy>=2",
+    "zstandard>=0.22",
+]
+
+[project.scripts]
+fetch-ecmwf = "isobar_data.fetch_ecmwf:main"
+isobar-data = "isobar_data.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = ["pytest>=8"]

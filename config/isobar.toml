@@ -1,0 +1,96 @@
+# Rideable-window thresholds and the v0 station list.
+# Shore bearings are measured once (OpenStreetMap) and are not re-fetched.
+
+[limits]
+surface_points = 8
+aerodromes = 8
+marine_points = 4
+ensemble_points = 2
+
+[kite]
+speed_min_kt = 15
+speed_max_kt = 30
+excluded_shore = ["offshore"]
+daylight_required = true
+
+[kite.sea_breeze]
+direction_min_deg = 200
+direction_max_deg = 250
+speed_above_inland_kt = 5
+inland_point = "perth-airport"
+timezone = "Australia/Perth"
+check_wmo = [94602, 94614, 95605]
+airport_wmo = 94151
+
+[[surface]]
+id = "cottesloe"
+latitude = -31.9953964
+longitude = 115.7511955
+onshore_from_deg = 270
+osm_way = 29283079
+marine = true
+
+[[surface]]
+id = "safety-bay"
+latitude = -32.3040595
+longitude = 115.7286309
+onshore_from_deg = 235
+osm_way = 559982738
+marine = true
+
+[[surface]]
+id = "rottnest"
+latitude = -32.0
+longitude = 115.5
+marine = false
+
+[[surface]]
+id = "perth-airport"
+latitude = -31.9403
+longitude = 115.967003
+marine = false
+
+[[surface]]
+id = "garden-island"
+latitude = -32.2
+longitude = 115.7
+marine = false
+
+[[surface]]
+id = "yssy"
+latitude = -33.946
+longitude = 151.177
+marine = false
+
+[[aerodromes]]
+icao = "YPPH"
+latitude = -31.9403
+longitude = 115.967003
+surface_id = "perth-airport"
+
+[[aerodromes]]
+icao = "YSSY"
+latitude = -33.946
+longitude = 151.177
+surface_id = "yssy"
+
+# Fallbacks until the obs bundle has been unpacked. The job prefers the
+# latitude and longitude on the Bureau row (Swanbourne and 94768).
+[[ensemble]]
+id = "swanbourne"
+wmo = 94614
+latitude = -32.0
+longitude = 115.8
+
+[[ensemble]]
+id = "sydney-observatory-hill"
+wmo = 94768
+latitude = -33.8593
+longitude = 151.2048
+
+[coastal]
+wmo = [94602, 94614, 95607, 95605, 94608, 94151]
+
+[bom]
+obs = ["IDW60910.tgz", "IDN60910.tgz"]
+charts = ["IDG00073.pdf", "IDG00074.gif"]

@@ -1,0 +1,8 @@
+id,airport_ident,length_ft,closed,le_ident,le_heading_degT,le_displaced_threshold_ft,he_ident,he_heading_degT,he_displaced_threshold_ft
+1,YPPH,11299,0,03,14,0,21,194,0
+2,YPPH,7096,0,06,59,0,24,239,0
+3,YSSY,8300,0,07,74,0,25,254,0
+4,YSSY,7999,0,16L,168,0,34R,348,0
+5,YSSY,12999,0,16R,168,0,34L,348,0
+6,YMML,11998,0,16,160,0,34,340,0
+7,YPPH,1000,1,09,90,0,27,270,0
