@@ -137,6 +137,10 @@ Page: <https://www.ecmwf.int/en/forecasts/datasets/open-data> (`Last-Modified` S
 
 **Steps, from that page (IFS cycle 50r1, 13 May 2026).** Atmosphere and wave, `stream=oper` / `stream=wave`: 00Z and 12Z, 0 to 144 by 3 h, then 150 to 360 by 6 h. 06Z and 18Z, 0 to 144 by 3 h only. Ensemble `stream=enfo`, `type=pf`, same steps. Pressure levels include 850 hPa and, since 50r1, 10 hPa. AIFS single (`model=aifs-single`): 6-hourly steps to 360 h, all four cycles. Parameters include `msl`, `2t`, `t` on pressure levels.
 
+**Collector horizon, checked 7 Oct 2026.** The published Australian crop asks 00Z and 12Z for 0–144 h at 3 h and 150, 156, 162, 168 h at 6 h. It does not publish 06Z or 18Z: those cycles end at 144 h, which is short of a week. A 6 Oct 12Z index returned 200 for steps 0, 96, 144, 150, 168, 240 and 360, and 404 for step 147. Step 360 is still on the portal; the collector stops at 168 h. The same day's 06Z index returned 200 for steps 90, 96 and 144, and 404 for 147 and 150. The hour list is `forecast_hours` in the run manifest (schema 2). Hours that are not in that list are not stored.
+
+The chart fields are byte ranges, not the whole GRIB. On that 12Z run the six required messages averaged about 4.2 MB a step and the three optional messages that are present (gust, most-unstable CAPE, cloud cover) about 2.5 MB. Fifty-three steps is about 350 MB of GRIB per run, plus about 2 MB of indexes. One step's six required messages (168 h, 4.6 MB) took 25 s from this machine, pauses included. A cold run is on the order of half an hour and continues on the next launch from the steps already stored. The float16 crop of those fields is about 60 MB a run.
+
 **Live objects, 18Z 25 Sep, one byte via `Range`.** All three returned 206, `Accept-Ranges: bytes`, `ETag`, `Last-Modified`.
 
 | Object | Bytes | `Last-Modified` |

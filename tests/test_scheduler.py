@@ -210,6 +210,7 @@ def test_ecmwf_cycles_are_the_latest_00z_and_12z():
     first, second = cycle_pair(now)
     assert first == datetime(2026, 9, 26, 0, tzinfo=UTC)
     assert second == datetime(2026, 9, 25, 12, tzinfo=UTC)
-    assert len(LEAD_HOURS) == 33
+    assert len(LEAD_HOURS) == 53
     assert LEAD_HOURS[0] == 0
-    assert LEAD_HOURS[-1] == 96
+    assert LEAD_HOURS[-1] == 168
+    assert 147 not in LEAD_HOURS

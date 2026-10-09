@@ -6,7 +6,9 @@ Australian product set and the contracts needed before expanding it.
 ## Now: make the existing archive dependable
 
 1. Keep the ECMWF regional GRIB crop as the chart's default source: 00Z and
-   12Z runs, 0–96 hours, three-hour native steps.
+   12Z runs, 0–168 hours. The manifest lists the hours (3 h through 144 h,
+   6 h from 150 h to 168 h). The Mac app still has to read that list; see
+   design.md.
 2. Keep Open-Meteo point products within the configured caps: surface spots,
    aerodromes, upper air, marine and ensemble at Swanbourne and Sydney.
 3. Keep Bureau observations, charts and warnings on the anonymous FTP paths

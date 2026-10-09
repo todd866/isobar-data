@@ -1,22 +1,28 @@
 """ECMWF Open Data 0.25° crop for the national chart.
 
-00Z and 12Z, steps 0–96 h at the native 3 h. Gusts, most-unstable CAPE and
-total cloud cover are stored when the index lists them. Visibility is not in
-the open-data set; the 9 km points carry it.
+00Z and 12Z through 168 h: 3-hourly from 0 to 144 h, then 6-hourly to 168 h.
+06Z and 18Z are not published; they end at or before 144 h and would shorten
+the week. Gusts, most-unstable CAPE and total cloud cover are stored when the
+index lists them. Visibility is not in the open-data set; the 9 km points carry it.
 """
 
 from __future__ import annotations
 
+import json
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 import urllib.error
 
+from isobar_data.contract import GLOBAL_GRID_FAMILY, GRID_FAMILY, GRID_SCHEMA_VERSION, marker
 from isobar_data.http import Later
 from isobar_data.fetch_ecmwf import (
+    GRID_EAST,
     GRID_NORTH,
+    GRID_SOUTH,
     GRID_STEP,
     GRID_WEST,
     crop_north_up,
@@ -34,9 +40,33 @@ from isobar_data.normalise import dump_json, pack_f16
 from isobar_data.publish import publish_run, run_dir
 from isobar_data.storage import atomic_write
 
-GRID_FAMILY = "grids/ecmwf_ifs025"
+# 3-hourly through 144 h, then the 6-hourly steps ECMWF actually publishes.
+# 147 h and the other gaps are not files and are not interpolated here.
+LEAD_HOURS = tuple([*range(0, 145, 3), *range(150, 169, 6)])
 
-LEAD_HOURS = tuple(range(0, 97, 3))
+
+@dataclass(frozen=True)
+class GridSpec:
+    family: str
+    west: float
+    east: float
+    north: float
+    south: float
+    step: float
+    nx: int
+    ny: int
+    wraps_longitude: bool = False
+    source_step: float = GRID_STEP
+
+
+def grid_spec(family: str = GRID_FAMILY) -> GridSpec:
+    """Return the published target grid without changing the AU default."""
+    if family == GLOBAL_GRID_FAMILY:
+        return GridSpec(family, -180.0, 179.5, 90.0, -90.0, 0.5, 720, 361, True)
+    if family != GRID_FAMILY:
+        raise ValueError(f"unknown grid family {family!r}")
+    nx, ny = grid_shape()
+    return GridSpec(family, GRID_WEST, GRID_EAST, GRID_NORTH, GRID_SOUTH, GRID_STEP, nx, ny, False)
 
 REQUIRED = (
     ("msl", "sfc", None, "mslp", "hPa"),
@@ -55,8 +85,17 @@ OPTIONAL = (
 )
 
 
+def _long_cycle(run: datetime) -> bool:
+    """00Z and 12Z reach past a week. 06Z and 18Z do not."""
+    return run.astimezone(timezone.utc).hour in (0, 12)
+
+
 def cycle_pair(now: datetime) -> tuple[datetime, datetime]:
-    """Latest 00Z and latest 12Z at or before ``now``."""
+    """Latest 00Z and latest 12Z at or before ``now``.
+
+    A newer 06Z or 18Z is ignored. Those cycles stop short of 168 h, so
+    publishing one would shorten the chart.
+    """
     now = now.astimezone(timezone.utc)
     day = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     cycles = []
@@ -73,7 +112,7 @@ def message_path(raw_dir: Path, run: datetime, step: int, param: str, levelist: 
     return raw_dir / run_id(run) / f"{step:03d}" / f"{label}.grib"
 
 
-def required_artifacts(run: datetime) -> list[str]:
+def required_artifacts(run: datetime, family: str = GRID_FAMILY) -> list[str]:
     names = []
     for step in LEAD_HOURS:
         valid = run_id(run + timedelta(hours=step))
@@ -83,8 +122,8 @@ def required_artifacts(run: datetime) -> list[str]:
     return names
 
 
-def product_paths(root: Path, run: datetime, variable: str, valid: datetime) -> tuple[Path, Path]:
-    directory = run_dir(root, GRID_FAMILY, run_id(run)) / variable
+def product_paths(root: Path, run: datetime, variable: str, valid: datetime, family: str = GRID_FAMILY) -> tuple[Path, Path]:
+    directory = run_dir(root, family, run_id(run)) / variable
     stem = run_id(valid)
     return directory / f"{stem}.f16", directory / f"{stem}.json"
 
@@ -117,26 +156,45 @@ def convert_field(values: np.ndarray, short_name: str, units: str) -> tuple[np.n
     raise ValueError(f"unexpected field {short_name}")
 
 
-def sidecar(run: datetime, valid: datetime, units: str, param: str) -> dict:
-    nx, ny = grid_shape()
+def sidecar(run: datetime, valid: datetime, units: str, param: str, family: str = GRID_FAMILY) -> dict:
+    spec = grid_spec(family)
     return {
-        "lat0": GRID_NORTH,
-        "lon0": GRID_WEST,
-        "dlat": -GRID_STEP,
-        "dlon": GRID_STEP,
-        "ny": ny,
-        "nx": nx,
+        "lat0": spec.north,
+        "lon0": spec.west,
+        "dlat": -spec.step,
+        "dlon": spec.step,
+        "ny": spec.ny,
+        "nx": spec.nx,
         "units": units,
         "run": run.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "valid_time": valid.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "model": "ecmwf-ifs-0p25-open-data",
         "fill": -32768,
-        "native_step_hours": 3,
+        "lead_hours": int(round((valid - run).total_seconds() / 3600.0)),
         "order": "north-to-south, west-to-east",
         "dtype": "float16",
         "endian": "little",
         "param": param,
+        "wraps_longitude": spec.wraps_longitude,
+        "source_grid_step": spec.source_step,
+        "target_grid_step": spec.step,
+        "resampling": "nearest-node",
     }
+
+
+def _current_sidecar(path: Path, step: int) -> bool:
+    """True when a stored sidecar already has this schema's lead hour.
+
+    Runs stored before schema 2 lack lead_hours and carry native_step_hours;
+    the readers reject those, so such a field is fetched again rather than
+    republished under a schema 2 manifest.
+    """
+    try:
+        side = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    return (isinstance(side, dict) and side.get("lead_hours") == step
+            and "native_step_hours" not in side)
 
 
 def _present(entries: list[dict], param: str, levtype: str, levelist: str | None) -> bool:
@@ -194,18 +252,81 @@ def _load_blob(
     return blob
 
 
-def _write_field(root: Path, run: datetime, valid: datetime, variable: str, param: str, grid: np.ndarray, units: str) -> None:
-    f16, side = product_paths(root, run, variable, valid)
-    if f16.is_file() and side.is_file():
+def _write_field(root: Path, run: datetime, valid: datetime, variable: str, param: str, grid: np.ndarray, units: str, family: str = GRID_FAMILY) -> None:
+    f16, side = product_paths(root, run, variable, valid, family)
+    lead = int(round((valid - run).total_seconds() / 3600.0))
+    if f16.is_file() and _current_sidecar(side, lead):
         return
     atomic_write(f16, pack_f16(grid))
-    dump_json(side, sidecar(run, valid, units, param))
+    dump_json(side, sidecar(run, valid, units, param, family))
 
 
-def archive_run(root: Path, run: datetime, consume=None) -> dict:
-    """Fetch any missing 0–96 h fields for one cycle. Already-stored steps are skipped."""
+def _incomplete(run: datetime, stored: int, skipped: int, missing_steps: list, detail: str) -> dict:
+    return {
+        "ok": False,
+        "run": run.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "stored": stored,
+        "skipped": skipped,
+        "missing_steps": missing_steps,
+        "detail": detail,
+        "complete": False,
+    }
+
+
+def _pointer_fields() -> dict:
+    return {
+        "schema_version": GRID_SCHEMA_VERSION,
+        "forecast_hours": list(LEAD_HOURS),
+        "horizon_hours": LEAD_HOURS[-1],
+        "uniform_step_hours": None,
+    }
+
+
+def _run_manifest(run: datetime, family: str = GRID_FAMILY) -> dict:
+    spec = grid_spec(family)
+    return {
+        **marker(family=family),
+        "schema_version": GRID_SCHEMA_VERSION,
+        "schema": GRID_SCHEMA_VERSION,
+        "forecast_hours": list(LEAD_HOURS),
+        "horizon_hours": LEAD_HOURS[-1],
+        "uniform_step_hours": None,
+        "run": run.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "model": "ecmwf-ifs-0p25-open-data",
+        "source": "ecmwf-open-data",
+        "grid": {
+            "west": spec.west,
+            "east": spec.east,
+            "north": spec.north,
+            "south": spec.south,
+            "step": spec.step,
+            "nx": spec.nx,
+            "ny": spec.ny,
+            "order": "north-to-south, west-to-east",
+            "dtype": "float16",
+            "endian": "little",
+            "wraps_longitude": spec.wraps_longitude,
+            "source_grid_step": spec.source_step,
+            "target_grid_step": spec.step,
+            "resampling": "nearest-node",
+        },
+    }
+
+
+def archive_run(root: Path, run: datetime, consume=None, family: str = GRID_FAMILY) -> dict:
+    """Fetch any missing week of fields for one 00Z or 12Z cycle.
+
+    Already-stored steps are skipped. A missing listed hour is not published
+    and is not filled. 06Z and 18Z are refused so they cannot become current.
+    """
+    if not _long_cycle(run):
+        return _incomplete(
+            run, 0, 0, [],
+            "06Z/18Z open data ends before 168 h; the published grid uses 00Z/12Z",
+        )
     raw_dir = root / "raw" / "ecmwf"
-    nx, ny = grid_shape()
+    target = grid_spec(family)
+    nx, ny = target.nx, target.ny
     stored = 0
     skipped = 0
     missing_steps = []
@@ -215,8 +336,8 @@ def archive_run(root: Path, run: datetime, consume=None) -> dict:
         valid = run + timedelta(hours=step)
         pending = []
         for param, levtype, levelist, variable, _units in REQUIRED + OPTIONAL:
-            f16, side = product_paths(root, run, variable, valid)
-            if f16.is_file() and side.is_file():
+            f16, side = product_paths(root, run, variable, valid, family)
+            if f16.is_file() and _current_sidecar(side, step):
                 skipped += 1
             else:
                 pending.append((param, levtype, levelist, variable))
@@ -226,10 +347,10 @@ def archive_run(root: Path, run: datetime, consume=None) -> dict:
             entries = _load_index(raw_dir, run, step, consume)
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
+                # Stop. Later steps cannot make a week, and they are not stored
+                # as empty frames.
                 missing_steps.append(step)
-                if step == 0:
-                    break
-                continue
+                break
             raise
         if not saw_optional:
             absent = []
@@ -263,7 +384,9 @@ def archive_run(root: Path, run: datetime, consume=None) -> dict:
                     blob, map_missing_to_nan=True
                 )
                 display, canonical = convert_field(grid, short_name, units)
-                cropped = crop_north_up(display, lat0, lon0, lat1, lon1, dlat=dlat, dlon=dlon)
+                cropped = crop_north_up(display, lat0, lon0, lat1, lon1,
+                    west=target.west, east=target.east, north=target.north,
+                    south=target.south, step=target.step, dlat=dlat, dlon=dlon)
             except Later:
                 raise
             except Exception as exc:
@@ -274,22 +397,24 @@ def archive_run(root: Path, run: datetime, consume=None) -> dict:
                 continue
             if cropped.shape != (ny, nx):
                 raise RuntimeError(f"{param} crop is {cropped.shape}, expected {(ny, nx)}")
-            _write_field(root, run, valid, variable, param, cropped, canonical)
+            _write_field(root, run, valid, variable, param, cropped, canonical, family)
             stored += 1
-    required = required_artifacts(run)
-    stage = run_dir(root, GRID_FAMILY, run_id(run))
+    required = required_artifacts(run, family)
+    stage = run_dir(root, family, run_id(run))
     missing = [name for name in required if not (stage / name).is_file()]
     if missing_steps or missing:
-        return {
-            "ok": False,
-            "run": run.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "stored": stored,
-            "skipped": skipped,
-            "missing_steps": missing_steps,
-            "detail": optional_note or "incomplete run was not published",
-            "complete": False,
-        }
-    publish_run(root, GRID_FAMILY, run_id(run), required, keep="all")
+        return _incomplete(
+            run, stored, skipped, missing_steps,
+            optional_note or "incomplete run was not published",
+        )
+    dump_json(stage / "manifest.json", _run_manifest(run, family))
+    publish_run(
+        root, family, run_id(run), required + ["manifest.json"],
+        # A global run is ~240 MB. Five complete cycles retain the previous
+        # 24-hour rain window while allowing older runs to be reclaimed by
+        # the existing 8 GB archive budget. AU history keeps its prior policy.
+        keep=5 if family == GLOBAL_GRID_FAMILY else "all", pointer_fields=_pointer_fields(),
+    )
     return {
         "ok": True,
         "run": run.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -309,7 +434,11 @@ def _spec(param: str):
 
 
 def archive_cycles(root: Path, now: datetime, consume=None) -> dict:
-    """Latest 00Z and latest 12Z. One step back a day if today's cycle is not out yet."""
+    """Archive latest 00Z/12Z cycles for AU and global target families.
+
+    Both families share the raw ECMWF index/message cache, so the second target
+    reuses every downloaded GRIB object from the first pass.
+    """
     results = []
     notes = []
     complete = True
@@ -330,12 +459,14 @@ def archive_cycles(root: Path, now: datetime, consume=None) -> dict:
                     complete = False
                     continue
                 raise
-        summary = archive_run(root, chosen, consume)
-        results.append(summary)
-        if summary["detail"]:
-            notes.append(summary["detail"])
-        if not summary["complete"]:
-            complete = False
+        for family in (GRID_FAMILY, GLOBAL_GRID_FAMILY):
+            summary = archive_run(root, chosen, consume, family=family)
+            summary["family"] = family
+            results.append(summary)
+            if summary["detail"]:
+                notes.append(f"{family}: {summary['detail']}")
+            if not summary["complete"]:
+                complete = False
         if newest is None or chosen > newest:
             newest = chosen
     detail = " ".join(dict.fromkeys(notes))

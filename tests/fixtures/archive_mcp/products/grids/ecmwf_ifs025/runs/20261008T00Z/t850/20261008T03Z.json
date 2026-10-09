@@ -1,0 +1,22 @@
+{
+  "lat0": -31.5,
+  "lon0": 115.5,
+  "dlat": -0.25,
+  "dlon": 0.25,
+  "ny": 2,
+  "nx": 2,
+  "units": "degC",
+  "run": "2026-10-08T00:00:00Z",
+  "valid_time": "2026-10-08T03:00:00Z",
+  "model": "ecmwf-ifs-0p25-open-data",
+  "fill": -32768,
+  "lead_hours": 3,
+  "order": "north-to-south, west-to-east",
+  "dtype": "float16",
+  "endian": "little",
+  "param": "t",
+  "wraps_longitude": false,
+  "source_grid_step": 0.25,
+  "target_grid_step": 0.25,
+  "resampling": "nearest-node"
+}

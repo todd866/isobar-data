@@ -12,7 +12,7 @@ import json
 import shutil
 from pathlib import Path
 
-from isobar_data.contract import CONTRACT, SCHEMA_VERSION, marker
+from isobar_data.contract import CONTRACT, accepted_schema_versions, marker
 from isobar_data.storage import atomic_write
 
 
@@ -42,8 +42,9 @@ def read_pointer(root: Path, family: str) -> dict:
         return {"latest": None, "runs": []}
     if not isinstance(payload, dict):
         return {"latest": None, "runs": []}
-    if ("schema_version" in payload and (type(payload["schema_version"]) is not int or
-                                         payload["schema_version"] != SCHEMA_VERSION)) or (
+    version = payload.get("schema_version")
+    if ("schema_version" in payload and (type(version) is not int or
+                                         version not in accepted_schema_versions(family))) or (
         "contract" in payload and payload["contract"] != CONTRACT
     ) or ("family" in payload and payload["family"] != family):
         raise UnsupportedContract(f"unsupported {family} pointer at {path}")
@@ -61,7 +62,8 @@ def publish_run(
     run_id: str,
     required: list[str],
     *,
-    keep: str = "latest",
+    keep: str | int = "latest",
+    pointer_fields: dict | None = None,
 ) -> None:
     """Publish ``run_id`` only when every required relative path exists."""
     directory = run_dir(root, family, run_id)
@@ -71,10 +73,14 @@ def publish_run(
             f"{family} {run_id} missing {len(missing)} artifacts, including {missing[0]}"
         )
     current = read_pointer(root, family)
-    if keep == "all":
+    if type(keep) is int and keep < 1:
+        raise ValueError("retained run count must be positive")
+    if keep == "all" or type(keep) is int:
         runs = [item for item in current["runs"] if item != run_id]
         runs.append(run_id)
         runs.sort()
+        if type(keep) is int:
+            runs = runs[-keep:]
         # Run ids are UTC stamps (20260926T00Z). The last published cycle can be
         # the older of the pair; readers follow the newest one.
         latest = runs[-1]
@@ -86,7 +92,10 @@ def publish_run(
     else:
         runs = [run_id]
         latest = run_id
-    payload = json.dumps({**marker(family=family), "latest": latest, "runs": runs}, indent=2).encode() + b"\n"
+    body = {**marker(family=family), "latest": latest, "runs": runs}
+    if pointer_fields:
+        body.update(pointer_fields)
+    payload = json.dumps(body, indent=2).encode() + b"\n"
     atomic_write(pointer_path(root, family), payload)
 
 

@@ -385,3 +385,19 @@ def test_aviation_crash_mid_rewrite_leaves_the_published_files(tmp_path, monkeyp
     assert again["path"] == entry["path"]
     assert again_path.read_bytes() == body
     assert again["sha256"] == entry["sha256"]
+def test_bounded_run_history_keeps_newest_when_older_cycle_finishes_last(tmp_path):
+    from isobar_data.publish import publish_run, read_pointer, run_dir
+    family = "grids/ecmwf_ifs_global"
+    for hour in (0, 12, 24, 36, 48, 60, 72, 6):
+        from datetime import datetime, timedelta, timezone
+        name = (datetime(2026, 10, 1, tzinfo=timezone.utc) + timedelta(hours=hour)).strftime("%Y%m%dT%HZ")
+        directory = run_dir(tmp_path, family, name)
+        directory.mkdir(parents=True)
+        (directory / "marker").write_text("complete")
+        publish_run(tmp_path, family, name, ["marker"], keep=5)
+    pointer = read_pointer(tmp_path, family)
+    assert pointer["latest"] == "20261004T00Z"
+    assert pointer["runs"] == ["20261002T00Z", "20261002T12Z", "20261003T00Z", "20261003T12Z", "20261004T00Z"]
+    # Trimming the pointer makes older runs eligible for budget cleanup; it
+    # never deletes files under a concurrent reader at publication time.
+    assert (run_dir(tmp_path, family, "20261001T00Z") / "marker").exists()

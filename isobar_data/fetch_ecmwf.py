@@ -17,10 +17,13 @@ import argparse
 import hashlib
 import json
 import random
+import ssl
 import sys
 import time
 import urllib.error
 import urllib.request
+
+import certifi
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -93,13 +96,26 @@ def max_step_hours(run: datetime) -> int:
     return 144 if run.astimezone(timezone.utc).hour in (6, 18) else 360
 
 
+def oper_step(hours: int) -> bool:
+    """IFS 0.25° oper steps: every 3 h through 144 h, every 6 h after that.
+
+    147 h is not a step. Neither are the other hours that fall between the
+    6-hourly tail.
+    """
+    if hours < 0:
+        return False
+    if hours <= 144:
+        return hours % 3 == 0
+    return hours % 6 == 0
+
+
 def lead_hours(run: datetime, valid: datetime) -> int:
     seconds = (valid.astimezone(timezone.utc) - run.astimezone(timezone.utc)).total_seconds()
     hours = int(round(seconds / 3600.0))
     if abs(seconds - hours * 3600) > 1:
         raise ValueError(f"{valid.isoformat()} is not a whole hour after {run.isoformat()}")
-    if hours < 0 or hours % 3:
-        raise ValueError(f"lead {hours} h is not a published 3-hour step")
+    if not oper_step(hours):
+        raise ValueError(f"lead {hours} h is not an open-data oper step")
     return hours
 
 
@@ -265,12 +281,31 @@ def accumulation_window(end_mm: np.ndarray, start_mm: np.ndarray) -> np.ndarray:
     return diff
 
 
+_ECMWF_SSL = None
+
+
+def ecmwf_ssl_context() -> ssl.SSLContext:
+    """TLS context whose trust store is certifi, including HARICA.
+
+    ECMWF's portal certificate chains to a HARICA root. Passing
+    ``cafile=certifi.where()`` does not consult ``SSL_CERT_FILE`` or
+    ``SSL_CERT_DIR``.
+
+    https://docs.python.org/3/library/ssl.html#ssl.create_default_context
+    https://github.com/certifi/python-certifi#usage
+    """
+    global _ECMWF_SSL
+    if _ECMWF_SSL is None:
+        _ECMWF_SSL = ssl.create_default_context(cafile=certifi.where())
+    return _ECMWF_SSL
+
+
 def _request(url: str, range_header: str | None, timeout: float) -> tuple[bytes, int]:
     headers = {"User-Agent": USER_AGENT}
     if range_header:
         headers["Range"] = range_header
     request = urllib.request.Request(url, headers=headers)
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    with urllib.request.urlopen(request, timeout=timeout, context=ecmwf_ssl_context()) as response:
         return response.read(), getattr(response, "status", 200)
 
 

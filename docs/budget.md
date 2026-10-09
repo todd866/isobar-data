@@ -152,7 +152,7 @@ Float16, ten fields, 1,836 points × 2 bytes × 10 = 36.7 KB per valid time. Six
 
 **Recommended steady state: about 2 GB**, mostly two states of tarballs kept for 3 days plus a year of obs and a year of thin grids. Call it **5 GB** with slack for warning days and a second copy of the last prognosis.
 
-Keeping every half-hour tarball for 14 days, both states, is about **4 GB** of overlap and is not worth it. ECMWF open-data GRIB is about 500 MB a run. Keeping that raw for 14 days would be about 14 GB, so the daemon keeps it for **48 hours** and keeps the normalised float16 grids for 14 days. A hard cap stops the store at **8 GB**. A fetch does not start when the volume has under **20 GB** free. Partial files older than an hour are deleted, and the launchd log is rotated.
+Keeping every half-hour tarball for 14 days, both states, is about **4 GB** of overlap and is not worth it. ECMWF open-data GRIB is about 500 MB a run if the whole file is kept. The collector stores byte ranges instead. The 168 h chart, measured on the 6 Oct 2026 12Z run, is about 350 MB of GRIB a run and about 60 MB of float16 after the Australian crop. Keeping that raw for 14 days would be about 10 GB at two runs a day, so the daemon keeps it for **48 hours** and keeps the normalised float16 grids for 14 days. A hard cap stops the store at **8 GB**. A fetch does not start when the volume has under **20 GB** free. Partial files older than an hour are deleted, and the launchd log is rotated.
 
 ## Money
 

@@ -9,11 +9,22 @@ Sustainable ingestion of weather data for [Isobar](https://github.com/todd866/is
 | [docs/budget.md](docs/budget.md) | Current point-request update followed by historical budget arithmetic. |
 | [docs/plan.md](docs/plan.md) | Current work and the next data-contract/international milestones. |
 
-The collector stores the national chart from ECMWF Open Data: IFS 0.25°, cropped to 95°E–170°E and 0°–50°S, the latest 00Z and 12Z runs, steps 0–96 h at 3 h. Open-Meteo stays on the budgeted point products (9 km spots and aerodromes, upper air, marine, ensemble at two pins). Bureau observations, warnings and prognosis come from anonymous FTP only. METAR, TAF and Australian-FIR SIGMETs come from aviationweather.gov. The earlier 1° Open-Meteo grid design is archived; that grid is not fetched.
+The collector stores the national chart from ECMWF Open Data: IFS 0.25°, cropped to 95°E–170°E and 0°–50°S, the latest 00Z and 12Z runs, steps 0–144 h at 3 h and 150–168 h at 6 h. The hour list is in each run's manifest (`forecast_hours`); missing hours are not filled. 06Z and 18Z are not published. See [docs/design.md](docs/design.md) for the schema 2 contract the Mac app has to follow. Open-Meteo stays on the budgeted point products (9 km spots and aerodromes, upper air, marine, ensemble at two pins). Bureau observations, warnings and prognosis come from anonymous FTP only. METAR, TAF and Australian-FIR SIGMETs come from aviationweather.gov. The earlier 1° Open-Meteo grid design is archived; that grid is not fetched.
 
-Run `uv sync --frozen --group dev` and `uv run --frozen pytest -q` for the full
-collector test suite. GitHub runs it on pushes and pull requests; tests use
-fixtures and temporary archives, not live provider accounts.
+Before pushing, run the full collector test suite locally with Python 3.12 and
+uv 0.11.7, matching the hosted workflow:
+
+```sh
+uv sync --frozen --group dev --python 3.12
+uv run --frozen pytest -q
+```
+
+Tests use fixtures and temporary archives, not live provider accounts. Private
+pushes and pull requests no longer start paid GitHub checks. The unchanged
+Ubuntu job is available through **Actions → Collector tests → Run workflow**
+for an explicit Linux compatibility check, which can consume billed Actions
+minutes. Local checks are a pre-push convention, not a server-enforced gate.
+This does not change the local collection schedule or install the daemon.
 
 `uv sync`, then `uv run isobar-data`. `scripts/install-launchd.sh` copies the package into `~/Library/Application Support/isobar-data`, creates a uv virtualenv there, writes a LaunchAgent that points at that copy, and does not load it. `scripts/uninstall-launchd.sh` removes both. `fetch-ecmwf` remains the one-shot float32 crop used by the chart prototype. Bureau radar, Bureau tide pages, NAIPS, `www.bom.gov.au`, and `api.weather.bom.gov.au` are out.
 

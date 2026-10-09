@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "contract": "isobar-data",
+  "family": "grids/ecmwf_ifs025",
+  "schema": 2,
+  "forecast_hours": [
+    0,
+    3
+  ],
+  "horizon_hours": 3,
+  "uniform_step_hours": null,
+  "run": "2026-10-08T00:00:00Z",
+  "model": "ecmwf-ifs-0p25-open-data",
+  "source": "ecmwf-open-data",
+  "grid": {
+    "west": 115.5,
+    "east": 115.75,
+    "north": -31.5,
+    "south": -31.75,
+    "step": 0.25,
+    "nx": 2,
+    "ny": 2,
+    "order": "north-to-south, west-to-east",
+    "dtype": "float16",
+    "endian": "little",
+    "wraps_longitude": false,
+    "source_grid_step": 0.25,
+    "target_grid_step": 0.25,
+    "resampling": "nearest-node"
+  }
+}
